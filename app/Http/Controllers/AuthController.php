@@ -2,79 +2,51 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\LoginRequest;
+use App\Http\Requests\RegisterRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use function PHPUnit\Framework\isTrue;
 
 class AuthController extends Controller
 {
-    public function register(Request $request): \Illuminate\Foundation\Application|\Illuminate\Http\Response|\Illuminate\Contracts\Foundation\Application|\Illuminate\Contracts\Routing\ResponseFactory
+    public function register(RegisterRequest $request): \Illuminate\Foundation\Application|\Illuminate\Http\Response|\Illuminate\Contracts\Foundation\Application|\Illuminate\Contracts\Routing\ResponseFactory
     {
-        $validator = Validator::make($request->all(),[
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'string', 'min:8']
-        ]);
-
-        if($validator->fails())
-            return response([
-                'data' => null,
-                'massage' => $validator->errors()->first()],
-                400);
-
         $user = User::create([
-           'name' => $request['name'],
-           'email' => $request['email'],
-           'password' => bcrypt($request['password']),
+            'name' => $request['name'],
+            'email' => $request['email'],
+            'password' => Hash::make($request['password']),
         ]);
-        $response = [
-            'user' => $user,
-            'token' => $user->createToken('Myapp')->plainTextToken,
-        ];
         return response([
-            'data' => $response,
+            'user' => $user,
+            'token' => $user->createToken('MyappToken')->plainTextToken,
             'message' => 'User created successfully.'],
             201);
     }
 
-    public function login(Request $request)
+    public function login(LoginRequest $request): \Illuminate\Foundation\Application|\Illuminate\Http\Response|\Illuminate\Contracts\Foundation\Application|\Illuminate\Contracts\Routing\ResponseFactory
     {
-        $validator  = Validator::make($request->all(),[
-            'email' => 'required',
-            'password' => 'required'
-        ]);
+        if (!Auth::attempt($request->only('email', 'password')))//request(['email', 'password'])
+            return response(['message' => 'Email or password is incorrect.'], 404);
 
-        if($validator->fails())
-            return response([
-                'data' => null,
-                'message' => $validator->errors()->first()],
-            400);
-
-        $user = User::where('email', $request['email'])->first();
-        if(!$user || !Hash::check($request['password'], $user->password))
-            return response([
-                'data' => null,
-                'message' => 'Email or password is incorrect.'],
-                404);
-
-        $response = [
-            'user' => $user,
-            'token' => $user->createToken('Myapp')->plainTextToken
-        ];
+        $user = Auth::user();
         return response([
-            'data' => $response,
-            'message' => 'User login successfully.'
-        ],200);
+            'user' => $user,
+            'token' => $user->createToken('MyappToken')->plainTextToken,
+            'message' => 'User logged in successfully.'
+        ], 200);
     }
 
-    public function logout()
+    public function logout(Request $request): \Illuminate\Foundation\Application|\Illuminate\Http\Response|\Illuminate\Contracts\Foundation\Application|\Illuminate\Contracts\Routing\ResponseFactory
     {
-        Auth::user()->delete();
-        return response([
-            'data' => null,
-            'message' => 'User logged out successfully.'],
-        200);
+        if ($request->has('all_devices') && $request['all_devices']) {
+            Auth::user()->tokens()->delete();
+            return response(['message' => 'The user logged out successfully from all devices.'], 200);
+        }
+        $request->user()->currentAccessToken()->delete();
+        return response(['message' => 'The user logged out successfully from this device only.'], 200);
     }
 }
